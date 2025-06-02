@@ -1,0 +1,8 @@
+﻿{
+  "ConnectionStrings": {
+    "Default": "Data Source=LAPTOP-JU6Q0M7M\\SQLEXPRESS;database=ExpertDB;Integrated Security=True;Connect Timeout=30;Encrypt=False;Trust Server Certificate=False;Application Intent=ReadWrite;Multi Subnet Failover=False"
+  },
+  "Client": {
+    "URL": "http://localhost:3000"
+  }
+}
