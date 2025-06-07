@@ -253,7 +253,7 @@ namespace Backend.Controllers
         }
         
         [HttpPost("Build")]
-        public async Task<IActionResult> BuildExpertSystem(bool rebuildDataset = false, bool rebuildCluster = false, bool rebuildProlog = true)
+        public async Task<IActionResult> BuildExpertSystem(bool rebuildDataset = true, bool rebuildCluster = true, bool rebuildProlog = true)
         {
             try
             {
@@ -365,7 +365,25 @@ namespace Backend.Controllers
                 }
 
                 if (clusterAssignments == null || clusterAssignments.Length == 0) return BadRequest();
-                
+
+                filePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.CLUSTER_FILE_NAME);
+                using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var streamWriter = new StreamWriter(fileStream))
+                using (var csvWriter = new CsvWriter(streamWriter, CultureInfo.InvariantCulture))
+                {
+                    csvWriter.WriteField("ProductRow");
+                    csvWriter.WriteField("ClusterAssignment");
+                    csvWriter.NextRecord();
+
+                    for (int i = 0; i < clusterAssignments.Length; i++)
+                    {
+                        csvWriter.WriteField(i + 1);
+                        csvWriter.WriteField(clusterAssignments[i]);
+                        csvWriter.NextRecord();
+                    }
+                    await streamWriter.FlushAsync();
+                }
+
                 filePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.DATASET_FILE_NAME);
                 var config = new CsvConfiguration(CultureInfo.InvariantCulture)
                 {
@@ -433,7 +451,7 @@ namespace Backend.Controllers
                         // For strings or other types, use the mode.
                         else
                         {
-                            var mode = values.GroupBy(v => v.ToString()).OrderByDescending(g => g.Count()).FirstOrDefault();
+                            var mode = values.GroupBy(v => v.ToString().Trim()).OrderByDescending(g => g.Count()).FirstOrDefault();
                             summary.Features[col] = mode == null ? string.Empty : mode.Key;
                         }
                     }
