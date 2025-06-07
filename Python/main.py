@@ -1,79 +1,77 @@
-#!/usr/bin/env python3
-import argparse
+import sys
 import json
 import pandas as pd
-import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
+import numpy as np
 
 
-def load_data(filename):
-    # Define the columns you care about.
-    selected_columns = [
-        "Memory", "Storage", "Rating", "SellingPrice", "OriginalPrice",
-        "Discount", "DiscountPercentage", "SellersAmount", "ScreenSize",
-        "BatterySize", "Reviews"
-    ]
-    df = pd.read_csv(filename)
-    data = df[selected_columns].copy()
-    # Convert values to numeric and drop rows with missing values.
-    for col in selected_columns:
-        data[col] = pd.to_numeric(data[col], errors='coerce')
-    data.dropna(inplace=True)
-    return data
-
-
-def auto_detect_k(scaled_data, max_k=10, default_k=3):
-    """
-    Uses the elbow method (with the KneeLocator from kneed) to detect
-    the optimal number of clusters. If no 'knee' is detected, returns a default.
-    """
-    distortions = []
-    k_range = range(1, max_k + 1)
-    for k in k_range:
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        kmeans.fit(scaled_data)
-        distortions.append(kmeans.inertia_)
+def read_input():
     try:
-        from kneed import KneeLocator
-        kn = KneeLocator(list(k_range), distortions, curve='convex', direction='decreasing')
-        optimal_k = kn.knee
-        if optimal_k is None:
-            optimal_k = default_k
-    except ImportError:
-        # If kneed is not available, use the default value.
-        optimal_k = default_k
-    return optimal_k
+        input_data = sys.stdin.readline()
+        return json.loads(input_data)
+    except Exception as e:
+        print(f"Error reading input: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+
+def choose_k_elbow_method(data, max_k=10):
+    distortions = []
+    K = range(2, max_k + 1)
+    for k in K:
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        kmeans.fit(data)
+        distortions.append(kmeans.inertia_)
+
+    # Find the "elbow" point by looking for the largest change in distortion
+    deltas = np.diff(distortions)
+    second_deltas = np.diff(deltas)
+    elbow_k = K[np.argmin(second_deltas) + 1] if len(second_deltas) > 0 else 2
+    return elbow_k
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="KMeans clustering on CSV data. If --k is <= 0, the elbow method is used."
-    )
-    parser.add_argument("--filepath", type=str, required=True,
-                        help="Path to the CSV file.")
-    parser.add_argument("--k", type=int, default=0,
-                        help="Number of clusters. Use a value <= 0 to invoke auto-detection (elbow method).")
-    args = parser.parse_args()
+    input_json = read_input()
+    file_path = input_json.get("FilePath")
+    fields = input_json.get("Fields")
+    k = input_json.get("K")
 
-    # Load and preprocess data.
-    data = load_data(args.filepath)
-    scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(data)
+    # file_path = r"D:\\00 - Project\\ExpertSmartphone\\Backend\\dataset.csv"
+    # fields = ["Memory", "Storage", "Rating", "OriginalPrice", "DiscountPercentage", "SellersAmount", "ScreenSize", "BatterySize", "Reviews"]
+    # k = -1
 
-    # Determine k: if k <= 0, use the elbow method.
-    if args.k <= 0:
-        k = auto_detect_k(scaled_data)
-    else:
-        k = args.k
+    try:
+        # Read CSV file
+        df = pd.read_csv(file_path)
 
-    # Perform KMeans clustering.
-    kmeans = KMeans(n_clusters=k, random_state=42)
-    clusters = kmeans.fit_predict(scaled_data)
+        # Select fields
+        data = df[fields].dropna()
 
-    # Output the cluster assignments as a JSON array.
-    print(json.dumps(clusters.tolist()))
+        # Standardize features
+        scaler = StandardScaler()
+        scaled_data = scaler.fit_transform(data)
+
+        # Determine K using elbow method if K is not set or <= 0
+        if k is None or k <= 0:
+            k = choose_k_elbow_method(scaled_data, max_k=10)
+
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        kmeans.fit(scaled_data)
+
+        # Assign clusters back to original row indices (excluding dropped NaNs)
+        cluster_labels = [-1] * len(df)
+        valid_indices = data.index.tolist()
+        for idx, label in zip(valid_indices, kmeans.labels_):
+            cluster_labels[idx] = int(label)
+
+        # Return cluster assignments as JSON
+        print(json.dumps(cluster_labels))
+
+    except Exception as e:
+        print(f"Error during clustering: {str(e)}", file=sys.stderr)
+        sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -5,7 +5,7 @@
         public ClusterSummary()
         {
             ClusterId = 0;
-            Features = null;
+            Features = new Dictionary<string, object>();
         }
 
         public int ClusterId { get; set; }

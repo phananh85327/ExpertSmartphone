@@ -1,0 +1,2 @@
+Source 3 (Main source: https://www.kaggle.com/datasets/yaminh/smartphone-sale-dataset/data): Brands,Models,Colors,Memory,Storage,Camera,Rating,Selling Price,Original Price,Mobile,Discount,discount percentage, Source 1 (https://www.kaggle.com/code/azzayahia/phone-sales-data-analysis/input): os,sellers_amount,screen_size,battery_size
+Source 2 (https://www.kaggle.com/code/ginelledsouza/phone-analysis/input): Reviews
