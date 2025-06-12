@@ -54,6 +54,10 @@ def main():
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
         kmeans.fit(scaled_data)
 
+        # Ensure old model is deleted if exists
+        if os.path.exists(model_out_path):
+            os.remove(model_out_path)
+
         # Save model and scaler
         with open(model_out_path, "wb") as f:
             pickle.dump({

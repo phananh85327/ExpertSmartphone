@@ -567,8 +567,8 @@ namespace Backend.Controllers
                         writer.WriteLine();
                         writer.WriteLine("% For numeric requirements: Use the precomputed field-to-cluster map.");
                         writer.WriteLine("triggered(Cluster, requirement(Field, _, numeric), FieldToClusterMap, true) :-");
-                        writer.WriteLine("    get_dict(Field, FieldToClusterMap, Cluster), !");
-                        writer.WriteLine("    true.");
+                        writer.WriteLine("    get_dict(Field, FieldToClusterMap, Cluster), !.");
+                        writer.WriteLine();
                         writer.WriteLine("triggered(_, _, _, false).");
                         writer.WriteLine();
                         // --- Score Calculation ---
