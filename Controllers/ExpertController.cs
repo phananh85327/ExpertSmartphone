@@ -615,7 +615,7 @@ namespace Backend.Controllers
                         writer.WriteLine("    format(\"Best matching cluster: ~w~n\", [BestCluster]),");
                         writer.WriteLine("    halt.");
                         writer.WriteLine();
-                        writer.WriteLine(":- initialization(main).");
+                        writer.WriteLine(":- initialization(main, main).");
                     }
                 }
 
