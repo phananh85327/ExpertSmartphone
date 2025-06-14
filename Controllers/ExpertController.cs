@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -589,114 +590,101 @@ namespace Backend.Controllers
         {
             try
             {
-                // 1. Build the Prolog input string.
-                //    Format each requirement as "field,value" and separate by semicolons.
-                //    The order should match what your .pl file expects.
-                var requirements = new List<string>
+                var feats = new List<string>();
+                if (!string.IsNullOrWhiteSpace(input.Brands)) Add("brands", Atom(input.Brands));
+                if (!string.IsNullOrWhiteSpace(input.Colors)) Add("colors", Atom(input.Colors));
+                if (input.Memory is { } mem)                  Add("memory", $"'{mem}'");
+                if (input.Storage is { } sto)                 Add("storage", $"'{sto}'");
+                if (input.Rating is { } rat)                  Add("rating", $"'{rat}'");
+                if (input.SellingPrice is { } price)          Add("sellingprice", $"'{price}'");
+                if (input.DiscountPercentage is { } disc)     Add("discountpercentage", $"'{disc}'");
+                if (!string.IsNullOrWhiteSpace(input.OS))     Add("os", Atom(input.OS));
+                if (input.SellersAmount is { } sellers)       Add("sellersamount", $"'{sellers}'");
+                if (input.ScreenSize is { } scr)              Add("screensize", $"'{scr}'");
+                if (input.BatterySize is { } bat)             Add("batterysize", $"'{bat}'");
+                if (input.Reviews is { } rev)                 Add("reviews", $"'{rev}'");
+
+                string Atom(string? value)
                 {
-                    $"brands,{input.Brands}",
-                    $"colors,{input.Colors}",
-                    $"memory,{input.Memory}",
-                    $"storage,{input.Storage}",
-                    $"rating,{input.Rating}",
-                    $"sellingprice,{input.SellingPrice}",
-                    $"discountpercentage,{input.DiscountPercentage}",
-                    $"os,{input.OS}",
-                    $"sellersamount,{input.SellersAmount}",
-                    $"screensize,{input.ScreenSize}",
-                    $"batterysize,{input.BatterySize}",
-                    $"reviews,{input.Reviews}"
-                };
-                var prologInput = string.Join(";", requirements);
+                    if (string.IsNullOrWhiteSpace(value)) return "''";
 
-                // 2. Define the file paths.
-                var plFilePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME);
-                var swiFilePath = Constants.SWI_FILE_PATH; // Absolute path to swipl.exe
+                    var esc = value.Replace("'", "\\'");
+                    return Regex.IsMatch(esc, "^[a-z][a-z0-9_]*$", RegexOptions.IgnoreCase)
+                           ? esc
+                           : $"'{esc}'";
+                }
+                void Add(string key, string value) => feats.Add($"feature({key},{value})");
 
-                // 3. Setup the ProcessStartInfo for SWI-Prolog.
+                var prologFeatureList = feats.Count == 0 ? "[]" : $"[{string.Join(";", feats)}]";
+                var goal = $"best_clusters({prologFeatureList},IDs,Score),writeln(IDs),writeln(Score)";
                 var psi = new ProcessStartInfo
                 {
-                    FileName = swiFilePath,
-                    Arguments = $"-s \"{plFilePath}\"", // load the .pl file
-                    RedirectStandardInput = true,
+                    FileName = $"\"{Constants.SWI_FILE_PATH}\"",
+                    Arguments = $"-q -s \"{Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME)}\" -g \"{goal}\" -t halt",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
                 };
 
-                var prologOutput = string.Empty;
-                using (var process = new Process { StartInfo = psi })
+                string? stdOut, stdErr;
+                using (var proc = Process.Start(psi)!)
                 {
-                    process.Start();
+                    stdOut = await proc.StandardOutput.ReadToEndAsync();
+                    stdErr = await proc.StandardError.ReadToEndAsync();
+                    await proc.WaitForExitAsync();
 
-                    // Write the input string to stdIn
-                    if (process.StandardInput.BaseStream.CanWrite)
-                    {
-                        await process.StandardInput.WriteLineAsync(prologInput);
-                    }
-                    process.StandardInput.Close();
-
-                    // Read the output and error
-                    prologOutput = await process.StandardOutput.ReadToEndAsync();
-                    var errorOutput = await process.StandardError.ReadToEndAsync();
-
-                    await process.WaitForExitAsync();
-
-                    if (process.ExitCode != 0)
-                    {
-                        return BadRequest($"SWI-Prolog error: {errorOutput}");
-                    }
+                    if (proc.ExitCode != 0) throw new Exception($"Prolog error: {stdErr}");
                 }
 
-                // 4. Extract the cluster ID from the Prolog output.
-                //    Assuming that your Prolog program prints something like:
-                //      "Best matching cluster: <clusterId>"
-                var match = Regex.Match(prologOutput, @"Best matching cluster:\s*(\d+)");
-                if (!match.Success)
-                {
-                    return BadRequest("Could not parse cluster id from prolog output.");
-                }
-                var clusterId = int.Parse(match.Groups[1].Value);
+                var output = stdOut.Trim();
+                var rx = new Regex(@"Top\s+score\s+([-0-9.]+),\s*clusters\s*\[([0-9,\s]*)\]", RegexOptions.IgnoreCase);
 
-                // 5. Use the cluster ID to find all matching product IDs from the cluster CSV file.
+                var m = rx.Match(output);
+                if (!m.Success) throw new Exception($"Unexpected Prolog output:\n{output}");
+
+                //var score = decimal.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+                var idMatches = m.Groups[2].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(Int32.Parse).ToArray();
+                //var result = new
+                //{
+                //    TopScore = score,
+                //    ClusterIDs = idMatches
+                //};
+
                 var clusterCsvPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.CLUSTER_FILE_NAME);
-                if (!System.IO.File.Exists(clusterCsvPath))
-                {
-                    return BadRequest("Cluster CSV file not found.");
-                }
+                if (!System.IO.File.Exists(clusterCsvPath)) throw new Exception("Cluster CSV file not found.");
 
                 var productIds = new List<int>();
                 var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
                 {
-                    HasHeaderRecord = true
+                    HasHeaderRecord = true,
+                    MissingFieldFound = null,
+                    HeaderValidated = null
                 };
                 using (var reader = new StreamReader(clusterCsvPath))
                 using (var csv = new CsvReader(reader, csvConfig))
                 {
-                    // Assuming CSV has headers "ProductID", "ClusterAssignment"
                     var records = csv.GetRecords<dynamic>().ToList();
                     foreach (var record in records)
                     {
-                        // We use dynamic binding to get the values.
-                        // Adjust the property names as per your actual CSV headers.
-                        int productId = int.Parse(record.ProductID.ToString());
-                        int rowClusterId = int.Parse(record.ClusterAssignment.ToString());
-                        if (rowClusterId == clusterId)
-                        {
-                            productIds.Add(productId);
-                        }
+                        int productId = -1;
+                        int rowClusterId = -1;
+                        int.TryParse(record.ProductID.ToString(), out productId);
+                        int.TryParse(record.ClusterAssignment.ToString(), out rowClusterId);
+
+                        if (productId != -1 && idMatches.Contains(rowClusterId)) productIds.Add(productId);
                     }
                 }
 
-                // 6. Return the cluster ID along with the matching product IDs.
                 var result = new
                 {
-                    ClusterId = clusterId,
+                    ClusterIds = idMatches,
                     MatchingProductIds = productIds
                 };
 
-                return Ok(result);
+                return Ok();
             }
             catch (Exception ex)
             {
