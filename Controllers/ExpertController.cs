@@ -569,7 +569,7 @@ namespace Backend.Controllers
                         writer.WriteLine();
                         writer.WriteLine("main:-");
                         writer.WriteLine("    parse_input(UFs),best_clusters(UFs,IDs,Best),");
-                        writer.WriteLine("    format('Top score ~2f, clusters ~w~n',[Best,IDs]),halt.");
+                        writer.WriteLine("    format('Top score ~2f, clusters ~w~n',[Best,IDs]).");
                         writer.WriteLine();
                         writer.WriteLine(":- initialization(main,main).");
                     }

@@ -51,6 +51,6 @@ parse_input(UFs):-
 
 main:-
     parse_input(UFs),best_clusters(UFs,IDs,Best),
-    format('Top score ~2f, clusters ~w~n',[Best,IDs]),halt.
+    format('Top score ~2f, clusters ~w~n',[Best,IDs]).
 
 :- initialization(main,main).
