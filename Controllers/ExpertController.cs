@@ -253,7 +253,7 @@ namespace Backend.Controllers
         }
 
         [HttpPost("Build")]
-        public async Task<IActionResult> BuildExpertSystem(bool rebuildDataset = true, bool rebuildCluster = true, bool rebuildProlog = true)
+        public async Task<IActionResult> BuildExpertSystem(bool rebuildDataset = true, bool rebuildCluster = true, bool rebuildProlog = true, int k = -1)
         {
             try
             {
@@ -343,7 +343,7 @@ namespace Backend.Controllers
                     {
                         FilePath = filePath,
                         Fields = clusteringFields,
-                        K = -1
+                        K = k,
                     };
 
                     var jsonData = JsonSerializer.Serialize(input);
@@ -487,9 +487,18 @@ namespace Backend.Controllers
 
                     using (var writer = new StreamWriter(filePath))
                     {
-                        writer.WriteLine("% Expert System rules generated from cluster summaries");
-                        writer.WriteLine();
+                        /* ───────────────────────── 1. HEADER ───────────────────────── */
+                        writer.WriteLine(":- use_module(library(readutil)).");
+                        writer.WriteLine(":- use_module(library(lists)).");
+                        writer.WriteLine(":- use_module(library(dcg/basics)).");
+                        writer.WriteLine(":- dynamic cluster/2.\n");
 
+                        writer.WriteLine(":- if(\\+current_predicate(string_trim/2)).");
+                        writer.WriteLine("string_trim(In,Out):-string_codes(In,C),phrase(trimmed(T),C),string_codes(Out,T).\n");
+                        writer.WriteLine("trimmed(T)-->blanks,string(T),blanks,eos.");
+                        writer.WriteLine(":- endif.\n");
+
+                        /* ───────────────────────── 2. CLUSTER FACTS ───────────────────────── */
                         foreach (var summary in summaries)
                         {
                             var featuresTerms = summary.Features.Select(kvp =>
@@ -522,100 +531,47 @@ namespace Backend.Controllers
                             var featuresList = "[" + string.Join(", ", featuresTerms) + "]";
                             writer.WriteLine($"cluster({summary.ClusterId}, {featuresList}).");
                         }
+                        writer.WriteLine();
 
-                        // Now write the backward-chaining rules using the new version.
+                        /* ───────────────────────── 3. NUMERIC UTILS ───────────────────────── */
+                        writer.WriteLine("maybe_number(A,N):-catch(atom_number(A,N),_,fail).\n");
+                        writer.WriteLine("numeric_similarity(U,C,S):-maybe_number(U,Un),maybe_number(C,Cn),");
+                        writer.WriteLine("    D is abs(Un-Cn), S is 1/(1+D).  % 1/(1+|Δ|)\n");
+
+                        /* ───────────────────────── 4. FEATURE-LEVEL SIM -------------------- */
+                        writer.WriteLine("feature_similarity(feature(K,U),feature(K,C),S):-");
+                        writer.WriteLine("    ( maybe_number(U,_),maybe_number(C,_) ->");
+                        writer.WriteLine("        numeric_similarity(U,C,S)");
+                        writer.WriteLine("    ; (U==C->S=1;S=0) ).\n");
+
+                        /* ───────────────────────── 5. CLUSTER SCORING ---------------------- */
+                        writer.WriteLine("cluster_score(UFs,CID,Score):-");
+                        writer.WriteLine("    cluster(CID,CFs),");
+                        writer.WriteLine("    findall(S,(member(Fu,UFs),member(Fc,CFs),feature_similarity(Fu,Fc,S)),Ss),");
+                        writer.WriteLine("    sum_list(Ss,Score).\n");
+
+                        /* ───────────────────────── 6. BEST CLUSTERS (ties) ----------------- */
+                        writer.WriteLine("epsilon(1.0e-6).");
+                        writer.WriteLine("best_clusters(UFs,IDs,Best):-");
+                        writer.WriteLine("    findall(S-C,(cluster_score(UFs,C,S)),Pairs),");
+                        writer.WriteLine("    pairs_keys(Pairs,Scores),max_list(Scores,Best),epsilon(E),");
+                        writer.WriteLine("    findall(C,(member(S-C,Pairs),abs(S-Best)=<E),IDs).\n");
+
+                        /* ───────────────────────── 7. INPUT & MAIN -------------------------- */
+                        writer.WriteLine("parse_input(UFs):-");
+                        writer.WriteLine("    writeln('Enter facts as feature(key,value); feature(...).'),");
+                        writer.WriteLine("    read_line_to_codes(user_input,Cs0),");
+                        writer.WriteLine("    (append(Cs,[46],Cs0)->true;Cs=Cs0), % strip '.'");
+                        writer.WriteLine("    atom_codes(A,Cs),atomic_list_concat(Atoms,';',A),");
+                        writer.WriteLine("    findall(feature(K,V),(member(Raw,Atoms),");
+                        writer.WriteLine("        atom_string(Raw,S0),string_trim(S0,S),S\\='',");
+                        writer.WriteLine("        atom_to_term(S,feature(K,V),_)),UFs).");
                         writer.WriteLine();
-                        writer.WriteLine("% --------------------------------------------------------------------");
-                        writer.WriteLine("% Backward Chaining Expert System Rules (New Version)");
-                        writer.WriteLine("% --------------------------------------------------------------------");
+                        writer.WriteLine("main:-");
+                        writer.WriteLine("    parse_input(UFs),best_clusters(UFs,IDs,Best),");
+                        writer.WriteLine("    format('Top score ~2f, clusters ~w~n',[Best,IDs]),halt.");
                         writer.WriteLine();
-                        // --- Helper Predicates to Extract Feature Values ---
-                        writer.WriteLine("get_numeric_feature(Cluster, Field, NumVal) :-");
-                        writer.WriteLine("    cluster(Cluster, Features),");
-                        writer.WriteLine("    member(feature(Field, Val), Features),");
-                        writer.WriteLine("    atom_number(Val, NumVal).");
-                        writer.WriteLine();
-                        writer.WriteLine("get_string_feature(Cluster, Field, StrVal) :-");
-                        writer.WriteLine("    cluster(Cluster, Features),");
-                        writer.WriteLine("    member(feature(Field, Val), Features),");
-                        writer.WriteLine("    atom_string(Val, StrVal).");
-                        writer.WriteLine();
-                        // --- Compute Closest Clusters for Numeric Requirements ---
-                        writer.WriteLine("compute_closest_clusters(Requirements, FieldToClusterMap) :-");
-                        writer.WriteLine("    include([R]>>(R = requirement(_,_,numeric)), Requirements, NumericReqs),");
-                        writer.WriteLine("    maplist(get_closest_cluster_for_field, NumericReqs, Pairs),");
-                        writer.WriteLine("    dict_create(FieldToClusterMap, _, Pairs).");
-                        writer.WriteLine();
-                        writer.WriteLine("get_closest_cluster_for_field(requirement(Field, Desired, numeric), Field-BestCluster) :-");
-                        writer.WriteLine("    findall(Diff-C, (");
-                        writer.WriteLine("         cluster(C, _),");
-                        writer.WriteLine("         get_numeric_feature(C, Field, NumVal),");
-                        writer.WriteLine("         Diff is abs(Desired - NumVal)");
-                        writer.WriteLine("    ), List),");
-                        writer.WriteLine("    sort(List, [_-BestCluster | _]).");
-                        writer.WriteLine();
-                        // --- Requirement Matching Predicates ---
-                        writer.WriteLine("% A requirement is represented as requirement(Field, Desired, Type),");
-                        writer.WriteLine("% where Type is either 'text' or 'numeric'.");
-                        writer.WriteLine();
-                        writer.WriteLine("% For text requirements: Exact (case-insensitive) match.");
-                        writer.WriteLine("triggered(Cluster, requirement(Field, Desired, text), _, true) :-");
-                        writer.WriteLine("    get_string_feature(Cluster, Field, Val),");
-                        writer.WriteLine("    downcase_atom(Val, LVal),");
-                        writer.WriteLine("    downcase_atom(Desired, LDesired),");
-                        writer.WriteLine("    LVal = LDesired.");
-                        writer.WriteLine();
-                        writer.WriteLine("% For numeric requirements: Use the precomputed field-to-cluster map.");
-                        writer.WriteLine("triggered(Cluster, requirement(Field, _, numeric), FieldToClusterMap, true) :-");
-                        writer.WriteLine("    get_dict(Field, FieldToClusterMap, Cluster), !.");
-                        writer.WriteLine();
-                        writer.WriteLine("triggered(_, _, _, false).");
-                        writer.WriteLine();
-                        // --- Score Calculation ---
-                        writer.WriteLine("% score_cluster(+Cluster, +Requirements, +FieldToClusterMap, -Score)");
-                        writer.WriteLine("% Score is the count of requirements triggered by the cluster.");
-                        writer.WriteLine("score_cluster(Cluster, Requirements, FieldToClusterMap, Score) :-");
-                        writer.WriteLine("    maplist(triggered(Cluster), Requirements, FieldToClusterMap, TriggeredList),");
-                        writer.WriteLine("    include(==(true), TriggeredList, Filtered),");
-                        writer.WriteLine("    length(Filtered, Score).");
-                        writer.WriteLine();
-                        writer.WriteLine("% best_cluster(+Requirements, -BestCluster)");
-                        writer.WriteLine("best_cluster(Requirements, BestCluster) :-");
-                        writer.WriteLine("    setof(C, Fs^(cluster(C, Fs)), Clusters),");
-                        writer.WriteLine("    compute_closest_clusters(Requirements, FieldMap),");
-                        writer.WriteLine("    findall(Score-C, (member(C, Clusters), score_cluster(C, Requirements, FieldMap, Score)), ScorePairs),");
-                        writer.WriteLine("    sort(1, @>=, ScorePairs, [_-BestCluster | _]).");
-                        writer.WriteLine();
-                        // --- Requirement Parsing ---
-                        writer.WriteLine("% parse_requirements(+InputString, -Requirements)");
-                        writer.WriteLine("% Input is a string with requirements separated by \";\".");
-                        writer.WriteLine("% Each requirement is formatted as: \"Field,Desired\".");
-                        writer.WriteLine("parse_requirements(InputString, Requirements) :-");
-                        writer.WriteLine("    split_string(InputString, \";\", \" \", ReqStrings),");
-                        writer.WriteLine("    maplist(parse_requirement, ReqStrings, Requirements).");
-                        writer.WriteLine();
-                        writer.WriteLine("parse_requirement(ReqStr, requirement(Field, Desired, Type)) :-");
-                        writer.WriteLine("    split_string(ReqStr, \",\", \" \", Parts),");
-                        writer.WriteLine("    ( Parts = [FieldString, DesiredString] ->");
-                        writer.WriteLine("          ( number_string(Num, DesiredString) ->");
-                        writer.WriteLine("                Type = numeric, Desired = Num, Field = FieldString");
-                        writer.WriteLine("          ;");
-                        writer.WriteLine("                Type = text, Desired = DesiredString, Field = FieldString");
-                        writer.WriteLine("          )");
-                        writer.WriteLine("    ;");
-                        writer.WriteLine("       Field = \"\", Desired = \"\", Type = text");
-                        writer.WriteLine("    ).");
-                        writer.WriteLine();
-                        // --- Main Predicate ---
-                        writer.WriteLine("% Main predicate for backward chaining testing.");
-                        writer.WriteLine("main :-");
-                        writer.WriteLine("    read_line_to_string(user_input, Input),");
-                        writer.WriteLine("    parse_requirements(Input, Requirements),");
-                        writer.WriteLine("    best_cluster(Requirements, BestCluster),");
-                        writer.WriteLine("    format(\"Best matching cluster: ~w~n\", [BestCluster]),");
-                        writer.WriteLine("    halt.");
-                        writer.WriteLine();
-                        writer.WriteLine(":- initialization(main, main).");
+                        writer.WriteLine(":- initialization(main,main).");
                     }
                 }
 
