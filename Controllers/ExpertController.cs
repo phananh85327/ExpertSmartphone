@@ -629,13 +629,11 @@ namespace Backend.Controllers
                     if (string.IsNullOrWhiteSpace(value)) return "''";
 
                     var esc = value.Replace("'", "\\'");
-                    return Regex.IsMatch(esc, "^[a-z][a-z0-9_]*$", RegexOptions.IgnoreCase)
-                           ? esc
-                           : $"'{esc}'";
+                    return $"'{esc}'";
                 }
                 void Add(string key, string value) => feats.Add($"feature({key},{value})");
 
-                var goal = $"query_from_input([{string.Join(";", feats)}])";
+                var goal = $"query_from_input([{string.Join(",", feats)}])";
                 var arguments = $"/c swipl -q -f \"{Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME)}\" -g \"{goal}\" -t halt";
 
                 var psi = new ProcessStartInfo
@@ -666,15 +664,10 @@ namespace Backend.Controllers
                 var m = rx.Match(output);
                 if (!m.Success) throw new Exception($"Unexpected Prolog output:\n{output}");
 
-                //var score = decimal.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+                var score = decimal.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
                 var idMatches = m.Groups[2].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(Int32.Parse).ToArray();
-                //var result = new
-                //{
-                //    TopScore = score,
-                //    ClusterIDs = idMatches
-                //};
-
                 var clusterCsvPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.CLUSTER_FILE_NAME);
+
                 if (!System.IO.File.Exists(clusterCsvPath)) throw new Exception("Cluster CSV file not found.");
 
                 var productIds = new List<int>();
@@ -701,11 +694,12 @@ namespace Backend.Controllers
 
                 var result = new
                 {
+                    TopScore = score,
                     ClusterIds = idMatches,
                     MatchingProductIds = productIds
                 };
 
-                return Ok();
+                return Ok(result);
             }
             catch (Exception ex)
             {
