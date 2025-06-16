@@ -624,10 +624,13 @@ namespace Backend.Controllers
                 }
                 void Add(string key, string value) => feats.Add($"feature({key},{value})");
 
+                var goal = $"query_from_input([{string.Join(";", feats)}])";
+                var arguments = $"/c swipl -q -f \"{Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME)}\" -g \"{goal}\" -t halt";
+
                 var psi = new ProcessStartInfo
                 {
-                    FileName = $"\"{Constants.SWI_FILE_PATH}\"",
-                    RedirectStandardInput = true,
+                    FileName = "cmd.exe",
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -635,33 +638,18 @@ namespace Backend.Controllers
                     StandardOutputEncoding = Encoding.UTF8,
                     StandardErrorEncoding = Encoding.UTF8
                 };
-                string? stdOut, stdErr;
-                using (var process = new Process { StartInfo = psi })
-                {
-                    process.Start();
-                    await using (var sin = process.StandardInput)
-                    {
-                        // 1. consult the file
-                        await sin.WriteLineAsync($"['{Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME)}'].");
 
-                        // 3. run your top-level predicate
-                        await sin.WriteLineAsync("main.");
+                using var process = new Process { StartInfo = psi };
+                process.Start();
 
-                        // 2. assert all four facts in one hit (single line, trailing dot!)
-                        await sin.WriteLineAsync(string.Join(";", feats) + ".");
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
 
-                        // 4. tell Prolog we're done so the process terminates
-                        await sin.WriteLineAsync("halt.");
-                    }
+                await process.WaitForExitAsync();
 
-                    stdOut = await process.StandardOutput.ReadToEndAsync();
-                    stdErr = await process.StandardError.ReadToEndAsync();
-                    await process.WaitForExitAsync();
+                if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(error)) throw new Exception($"Prolog error: {error}");
 
-                    if (process.ExitCode != 0) throw new Exception($"Prolog error: {stdErr}");
-                }
-
-                var output = stdOut.Trim();
+                output = output.Trim();
                 var rx = new Regex(@"Top\s+score\s+([-0-9.]+),\s*clusters\s*\[([0-9,\s]*)\]", RegexOptions.IgnoreCase);
 
                 var m = rx.Match(output);
@@ -714,20 +702,17 @@ namespace Backend.Controllers
                 return BadRequest();
             }
         }
-        // File: Controllers/ExpertController.cs
+
         [HttpPost("GetExpertResultsTest")]
         public async Task<IActionResult> GetExpertResultsTest()
         {
             var input = "feature(memory,'4'),feature(brands,'SAMSUNG'),feature(rating,'4.3'),feature(storage,'64')";
-            var prologPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME);
             var goal = $"query_from_input([{input}])";
-
-            // Wrap in a cmd shell call with quotes carefully escaped
-            var arguments = $"/c swipl -q -f \"{prologPath}\" -g \"{goal}\" -t halt";
+            var arguments = $"/c swipl -q -f \"{Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME)}\" -g \"{goal}\" -t halt";
 
             var psi = new ProcessStartInfo
             {
-                FileName = "cmd.exe", // 💡 wrapper
+                FileName = "cmd.exe",
                 Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -740,8 +725,8 @@ namespace Backend.Controllers
             using var process = new Process { StartInfo = psi };
             process.Start();
 
-            string output = await process.StandardOutput.ReadToEndAsync();
-            string error = await process.StandardError.ReadToEndAsync();
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
 
             await process.WaitForExitAsync();
 
