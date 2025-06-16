@@ -49,8 +49,19 @@ parse_input(UFs):-
         atom_string(Raw,S0),string_trim(S0,S),S\='',
         atom_to_term(S,feature(K,V),_)),UFs).
 
+query_from_input(UFs):-
+    best_clusters(UFs,IDs,Best),
+    format('Top score ~2f, clusters ~w~n',[Best,IDs]).
+
 main:-
     parse_input(UFs),best_clusters(UFs,IDs,Best),
     format('Top score ~2f, clusters ~w~n',[Best,IDs]).
 
-:- initialization(main,main).
+start:-
+    catch((
+        prolog_current_frame(Frame),
+        prolog_frame_attribute(Frame,parent_goal,Goal),
+        ( Goal == user -> main ; true )
+    ), _, true).
+
+:- initialization(start).
