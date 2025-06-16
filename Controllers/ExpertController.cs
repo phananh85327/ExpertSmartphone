@@ -4,12 +4,14 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace Backend.Controllers
 {
@@ -23,15 +25,8 @@ namespace Backend.Controllers
         {
             _context = context;
         }
-
-        [HttpGet("Get")]
-        public async Task<IActionResult> GetProducts(int start, int end)
-        {
-            var products = await _context.Product.Skip(start).Take(end - start).ToArrayAsync();
-            return Ok(products);
-        }
         
-        [HttpGet("Get/{id}")]
+        [HttpGet("Get/Product/{id}")]
         public async Task<IActionResult> GetProduct(int id)
         {
             var product = await _context.Product.FindAsync(id);
@@ -42,7 +37,21 @@ namespace Backend.Controllers
 
             return Ok(product);
         }
-        
+
+        [HttpGet("Get/Products")]
+        public async Task<IActionResult> GetProducts(int start, int end)
+        {
+            var products = await _context.Product.Skip(start).Take(end - start).ToArrayAsync();
+            return Ok(products);
+        }
+
+        [HttpGet("Get/Products/{ids}")]
+        public async Task<IActionResult> GetProducts(int[] ids)
+        {
+            var products = await _context.Product.Where(p => ids.Contains(p.ProductID)).ToArrayAsync();
+            return Ok(products);
+        }
+
         [HttpPost("Insert")]
         public async Task<IActionResult> Insert([FromBody] ProductRequest request)
         {
@@ -615,12 +624,10 @@ namespace Backend.Controllers
                 }
                 void Add(string key, string value) => feats.Add($"feature({key},{value})");
 
-                var prologFeatureList = feats.Count == 0 ? "[]" : $"[{string.Join(";", feats)}]";
-                var goal = $"best_clusters({prologFeatureList},IDs,Score),writeln(IDs),writeln(Score)";
                 var psi = new ProcessStartInfo
                 {
                     FileName = $"\"{Constants.SWI_FILE_PATH}\"",
-                    Arguments = $"-q -s \"{Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME)}\" -g \"{goal}\" -t halt",
+                    RedirectStandardInput = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -628,15 +635,30 @@ namespace Backend.Controllers
                     StandardOutputEncoding = Encoding.UTF8,
                     StandardErrorEncoding = Encoding.UTF8
                 };
-
                 string? stdOut, stdErr;
-                using (var proc = Process.Start(psi)!)
+                using (var process = new Process { StartInfo = psi })
                 {
-                    stdOut = await proc.StandardOutput.ReadToEndAsync();
-                    stdErr = await proc.StandardError.ReadToEndAsync();
-                    await proc.WaitForExitAsync();
+                    process.Start();
+                    await using (var sin = process.StandardInput)
+                    {
+                        // 1. consult the file
+                        await sin.WriteLineAsync($"['{Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME)}'].");
 
-                    if (proc.ExitCode != 0) throw new Exception($"Prolog error: {stdErr}");
+                        // 3. run your top-level predicate
+                        await sin.WriteLineAsync("main.");
+
+                        // 2. assert all four facts in one hit (single line, trailing dot!)
+                        await sin.WriteLineAsync(string.Join(";", feats) + ".");
+
+                        // 4. tell Prolog we're done so the process terminates
+                        await sin.WriteLineAsync("halt.");
+                    }
+
+                    stdOut = await process.StandardOutput.ReadToEndAsync();
+                    stdErr = await process.StandardError.ReadToEndAsync();
+                    await process.WaitForExitAsync();
+
+                    if (process.ExitCode != 0) throw new Exception($"Prolog error: {stdErr}");
                 }
 
                 var output = stdOut.Trim();
@@ -691,6 +713,42 @@ namespace Backend.Controllers
                 Console.WriteLine(ex.Message);
                 return BadRequest();
             }
+        }
+        // File: Controllers/ExpertController.cs
+        [HttpPost("GetExpertResultsTest")]
+        public async Task<IActionResult> GetExpertResultsTest()
+        {
+            var input = "feature(memory,'4'),feature(brands,'SAMSUNG'),feature(rating,'4.3'),feature(storage,'64')";
+            var prologPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PROLOG_FILE_NAME);
+            var goal = $"query_from_input([{input}])";
+
+            // Wrap in a cmd shell call with quotes carefully escaped
+            var arguments = $"/c swipl -q -f \"{prologPath}\" -g \"{goal}\" -t halt";
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "cmd.exe", // 💡 wrapper
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
+            };
+
+            using var process = new Process { StartInfo = psi };
+            process.Start();
+
+            string output = await process.StandardOutput.ReadToEndAsync();
+            string error = await process.StandardError.ReadToEndAsync();
+
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(error))
+                return BadRequest($"Prolog error: {error}");
+
+            return Ok(output.Trim());
         }
     }
 }
