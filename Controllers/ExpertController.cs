@@ -577,11 +577,22 @@ namespace Backend.Controllers
                         writer.WriteLine("        atom_string(Raw,S0),string_trim(S0,S),S\\='',");
                         writer.WriteLine("        atom_to_term(S,feature(K,V),_)),UFs).");
                         writer.WriteLine();
+                        writer.WriteLine("query_from_input(UFs):-");
+                        writer.WriteLine("    best_clusters(UFs,IDs,Best),");
+                        writer.WriteLine("    format('Top score ~2f, clusters ~w~n',[Best,IDs]).");
+                        writer.WriteLine();
                         writer.WriteLine("main:-");
                         writer.WriteLine("    parse_input(UFs),best_clusters(UFs,IDs,Best),");
                         writer.WriteLine("    format('Top score ~2f, clusters ~w~n',[Best,IDs]).");
                         writer.WriteLine();
-                        writer.WriteLine(":- initialization(main,main).");
+                        writer.WriteLine("start:-");
+                        writer.WriteLine("    catch((");
+                        writer.WriteLine("        prolog_current_frame(Frame),");
+                        writer.WriteLine("        prolog_frame_attribute(Frame,parent_goal,Goal),");
+                        writer.WriteLine("        ( Goal == user -> main ; true )");
+                        writer.WriteLine("    ), _, true).");
+                        writer.WriteLine();
+                        writer.WriteLine(":- initialization(start).");
                     }
                 }
 
