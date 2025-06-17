@@ -4,14 +4,12 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace Backend.Controllers
 {
@@ -55,10 +53,7 @@ namespace Backend.Controllers
         [HttpPost("Insert")]
         public async Task<IActionResult> Insert([FromBody] ProductRequest request)
         {
-            if (request == null)
-            {
-                return BadRequest("Invalid product request.");
-            }
+            if (request == null) return BadRequest("Invalid product request.");
 
             var product = new Product
             {
@@ -68,37 +63,101 @@ namespace Backend.Controllers
                 Memory = request.Memory,
                 Storage = request.Storage,
                 Camera = request.Camera,
+                Rating = request.Rating,
                 OriginalPrice = request.OriginalPrice,
                 Mobile = request.Mobile,
                 DiscountPercentage = request.DiscountPercentage,
                 OS = request.OS,
                 SellersAmount = request.SellersAmount,
                 ScreenSize = request.ScreenSize,
-                BatterySize = request.BatterySize
+                BatterySize = request.BatterySize,
+                Reviews = request.Reviews
             };
-
             product.SellingPrice = product.OriginalPrice * (100 - product.DiscountPercentage) / 100;
             product.Discount = product.OriginalPrice - product.SellingPrice;
 
             _context.Product.Add(product);
             await _context.SaveChangesAsync();
 
-            return Ok();
+            var newProductData = new
+            {
+                Memory = product.Memory,
+                Storage = product.Storage,
+                Rating = product.Rating,
+                OriginalPrice = product.OriginalPrice,
+                DiscountPercentage = product.DiscountPercentage,
+                SellersAmount = product.SellersAmount,
+                ScreenSize = product.ScreenSize,
+                BatterySize = product.BatterySize,
+                Reviews = request.Reviews
+            };
+            var jsonInput = JsonSerializer.Serialize(newProductData);
+            //var jsonInput = Newtonsoft.Json.JsonConvert.SerializeObject(newProductData);
+
+            var assignedCluster = -1;
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = string.Format("\"{0}\"", Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PYTHON_VENV)),
+                    Arguments = string.Format("\"{0}\"", Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PYTHON_ASSIGN_CLUSTER_SCRIPT_FILE_PATH)),
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (var process = new Process { StartInfo = psi })
+                {
+                    process.Start();
+                    using (var sw = process.StandardInput)
+                    {
+                        if (sw.BaseStream.CanWrite)
+                        {
+                            await sw.WriteLineAsync(jsonInput);
+                        }
+                    }
+
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    var error = await process.StandardError.ReadToEndAsync();
+
+                    await process.WaitForExitAsync();
+
+                    if (process.ExitCode != 0) throw new Exception($"Error from clustering script: {error}");
+
+                    if (!int.TryParse(output.Trim(), out assignedCluster)) throw new Exception("Could not parse the cluster assignment from the script output.");
+                }
+
+                var clusterFilePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.CLUSTER_FILE_NAME);
+                if (!System.IO.File.Exists(clusterFilePath)) throw new Exception("Could not find cluster assignment file.");
+
+                using (var fileStream = new FileStream(clusterFilePath, FileMode.Append, FileAccess.Write, FileShare.None))
+                using (var streamWriter = new StreamWriter(fileStream))
+                using (var csvWriter = new CsvWriter(streamWriter, CultureInfo.InvariantCulture))
+                {
+                    csvWriter.WriteField(product.ProductID);
+                    csvWriter.WriteField(assignedCluster);
+                    csvWriter.NextRecord();
+                    await streamWriter.FlushAsync();
+                }
+
+                return Ok(new { ProductId = product.ProductID, ClusterAssignment = assignedCluster });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error while assigning cluster: {ex.Message}");
+                return BadRequest();
+            }
         }
 
         [HttpPut("Update/{id}")]
         public async Task<IActionResult> Update(int id, [FromBody] ProductRequest request)
         {
-            if (request == null)
-            {
-                return BadRequest("Invalid product request.");
-            }
+            if (request == null) return BadRequest("Invalid product request.");
 
             var product = await _context.Product.FindAsync(id);
-            if (product == null)
-            {
-                return BadRequest("Product not found.");
-            }
+            if (product == null) return BadRequest("Product not found.");
 
             product.Brands = request.Brands;
             product.Models = request.Models;
@@ -106,6 +165,7 @@ namespace Backend.Controllers
             product.Memory = request.Memory;
             product.Storage = request.Storage;
             product.Camera = request.Camera;
+            product.Rating = request.Rating;
             product.OriginalPrice = request.OriginalPrice;
             product.Mobile = request.Mobile;
             product.DiscountPercentage = request.DiscountPercentage;
@@ -113,57 +173,98 @@ namespace Backend.Controllers
             product.SellersAmount = request.SellersAmount;
             product.ScreenSize = request.ScreenSize;
             product.BatterySize = request.BatterySize;
+            product.Reviews = request.Reviews;
 
             product.SellingPrice = product.OriginalPrice * (100 - product.DiscountPercentage) / 100;
             product.Discount = product.OriginalPrice - product.SellingPrice;
 
             await _context.SaveChangesAsync();
 
-            return Ok();
-        }
-
-        [HttpPut("UpdateRating/{id}")]
-        public async Task<IActionResult> UpdateRating(int id, [FromBody] decimal rating)
-        {
-            if (rating < 0 || rating > 5)
+            var newProductData = new
             {
-                return BadRequest("Invalid rating request.");
+                Memory = product.Memory,
+                Storage = product.Storage,
+                Rating = product.Rating,
+                OriginalPrice = product.OriginalPrice,
+                DiscountPercentage = product.DiscountPercentage,
+                SellersAmount = product.SellersAmount,
+                ScreenSize = product.ScreenSize,
+                BatterySize = product.BatterySize,
+                Reviews = product.Reviews
+            };
+            var jsonInput = JsonSerializer.Serialize(newProductData);
+            //var jsonInput = Newtonsoft.Json.JsonConvert.SerializeObject(newProductData);
+
+            var assignedCluster = -1;
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = string.Format("\"{0}\"", Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PYTHON_VENV)),
+                    Arguments = string.Format("\"{0}\"", Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.PYTHON_ASSIGN_CLUSTER_SCRIPT_FILE_PATH)),
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (var process = new Process { StartInfo = psi })
+                {
+                    process.Start();
+                    using (var sw = process.StandardInput)
+                    {
+                        if (sw.BaseStream.CanWrite)
+                        {
+                            await sw.WriteLineAsync(jsonInput);
+                        }
+                    }
+
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    var error = await process.StandardError.ReadToEndAsync();
+
+                    await process.WaitForExitAsync();
+
+                    if (process.ExitCode != 0) throw new Exception($"Error from clustering script: {error}");
+
+                    if (!int.TryParse(output.Trim(), out assignedCluster)) throw new Exception("Could not parse the cluster assignment from the script output.");
+                }
+
+                var clusterFilePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.CLUSTER_FILE_NAME);
+                if (!System.IO.File.Exists(clusterFilePath)) throw new Exception("Could not find cluster assignment file.");
+
+                var records = new List<dynamic>();
+                using (var reader = new StreamReader(clusterFilePath))
+                using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
+                {
+                    records = csv.GetRecords<dynamic>().ToList();
+                }
+
+                var updated = false;
+                foreach (var record in records)
+                {
+                    if (record.ProductID.ToString() == product.ProductID.ToString())
+                    {
+                        record.ClusterAssignment = assignedCluster.ToString();
+                        updated = true;
+                        break;
+                    }
+                }
+                if (!updated) throw new Exception("Could not find record.");
+
+                using (var writer = new StreamWriter(clusterFilePath))
+                using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
+                {
+                    csv.WriteRecords(records);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                return BadRequest();
             }
 
-            var product = await _context.Product.FindAsync(id);
-            if (product == null)
-            {
-                return BadRequest("Product not found.");
-            }
-
-            product.Rating = (product.Rating + rating) / 2;
-            product.Reviews += 1;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(product);
-        }
-
-        [HttpPut("SetRating/{id}")]
-        public async Task<IActionResult> SetRating(int id, [FromBody] RatingRequest request)
-        {
-            if (request == null || request.Rating < 0 || request.Rating > 5)
-            {
-                return BadRequest("Invalid rating request.");
-            }
-
-            var product = await _context.Product.FindAsync(id);
-            if (product == null)
-            {
-                return BadRequest("Product not found.");
-            }
-
-            product.Rating = request.Rating;
-            product.Reviews = request.Reviews;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(product);
+            return Ok(new { ProductId = product.ProductID, ClusterAssignment = assignedCluster });
         }
 
         [HttpDelete("Delete/{id}")]
