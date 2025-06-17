@@ -122,7 +122,7 @@ namespace Backend.Controllers
 
                     await process.WaitForExitAsync();
 
-                    if (process.ExitCode != 0) throw new Exception($"Error from clustering script: {error}");
+                    if (process.ExitCode != 0) throw new Exception("Errors: " + error);
 
                     if (!int.TryParse(output.Trim(), out assignedCluster)) throw new Exception("Could not parse the cluster assignment from the script output.");
                 }
@@ -224,7 +224,7 @@ namespace Backend.Controllers
 
                     await process.WaitForExitAsync();
 
-                    if (process.ExitCode != 0) throw new Exception($"Error from clustering script: {error}");
+                    if (process.ExitCode != 0) throw new Exception("Errors: " + error);
 
                     if (!int.TryParse(output.Trim(), out assignedCluster)) throw new Exception("Could not parse the cluster assignment from the script output.");
                 }
@@ -486,10 +486,7 @@ namespace Backend.Controllers
 
                         await process.WaitForExitAsync();
 
-                        if (process.ExitCode != 0)
-                        {
-                            throw new Exception("Errors: " + error);
-                        }
+                        if (process.ExitCode != 0) throw new Exception("Errors: " + error);
 
                         clusterAssignments = JsonSerializer.Deserialize<int[]>(output) ?? Array.Empty<int>();
                     }
