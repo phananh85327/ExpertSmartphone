@@ -77,9 +77,6 @@ namespace Backend.Controllers
             product.SellingPrice = product.OriginalPrice * (100 - product.DiscountPercentage) / 100;
             product.Discount = product.OriginalPrice - product.SellingPrice;
 
-            _context.Product.Add(product);
-            await _context.SaveChangesAsync();
-
             var newProductData = new
             {
                 Memory = product.Memory,
@@ -143,6 +140,9 @@ namespace Backend.Controllers
                     await streamWriter.FlushAsync();
                 }
 
+                _context.Product.Add(product);
+                await _context.SaveChangesAsync();
+
                 return Ok(new { ProductId = product.ProductID, ClusterAssignment = assignedCluster });
             }
             catch (Exception ex)
@@ -178,8 +178,6 @@ namespace Backend.Controllers
 
             product.SellingPrice = product.OriginalPrice * (100 - product.DiscountPercentage) / 100;
             product.Discount = product.OriginalPrice - product.SellingPrice;
-
-            await _context.SaveChangesAsync();
 
             var newProductData = new
             {
@@ -258,6 +256,8 @@ namespace Backend.Controllers
                 {
                     csv.WriteRecords(records);
                 }
+
+                await _context.SaveChangesAsync();
             }
             catch (Exception ex)
             {
