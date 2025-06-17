@@ -73,6 +73,7 @@ namespace Backend.Controllers
                 BatterySize = request.BatterySize,
                 Reviews = request.Reviews
             };
+
             product.SellingPrice = product.OriginalPrice * (100 - product.DiscountPercentage) / 100;
             product.Discount = product.OriginalPrice - product.SellingPrice;
 
