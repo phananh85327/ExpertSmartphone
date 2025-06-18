@@ -130,6 +130,9 @@ namespace Backend.Controllers
                 var clusterFilePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", Constants.CLUSTER_FILE_NAME);
                 if (!System.IO.File.Exists(clusterFilePath)) throw new Exception("Could not find cluster assignment file.");
 
+                _context.Product.Add(product);
+                await _context.SaveChangesAsync();
+
                 using (var fileStream = new FileStream(clusterFilePath, FileMode.Append, FileAccess.Write, FileShare.None))
                 using (var streamWriter = new StreamWriter(fileStream))
                 using (var csvWriter = new CsvWriter(streamWriter, CultureInfo.InvariantCulture))
@@ -139,9 +142,6 @@ namespace Backend.Controllers
                     csvWriter.NextRecord();
                     await streamWriter.FlushAsync();
                 }
-
-                _context.Product.Add(product);
-                await _context.SaveChangesAsync();
 
                 return Ok(new { ProductId = product.ProductID, ClusterAssignment = assignedCluster });
             }
