@@ -54,9 +54,11 @@
 
 # Thực nghiệm khi lấy đề xuất khuyến nghị
 ## Json body test cho HttpPost("GetExpertResults")
-## {
-##   "brands": "SAMSUNG",
-##   "memory": 4,
-##   "storage": 64,
-##   "rating": 4
-## }
+```json
+{
+  "brands": "SAMSUNG",
+  "memory": 4,
+  "storage": 64,
+  "rating": 4
+}
+```
