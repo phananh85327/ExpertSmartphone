@@ -35,19 +35,19 @@
 ## {
 ##   "brands": "Apple",
 ##   "models": "iPhone 16 Pro Max",
-##   "colors": "Sierra Blue",
-##   "memory": 6,
+##   "colors": "Silver",
+##   "memory": 8,
 ##   "storage": 256,
 ##   "camera": true,
-##   "rating": 1,
-##   "originalPrice": 200000,
+##   "rating": 5,
+##   "originalPrice": 100000,
 ##   "mobile": "Apple iPhone 16 Pro Max",
 ##   "discountPercentage": 0,
 ##   "os": "IOS",
-##   "sellersAmount": 2000,
+##   "sellersAmount": 20,
 ##   "screenSize": 6.7,
 ##   "batterySize": 5000,
-##   "reviews": 500
+##   "reviews": 300
 ## }
 
 # Thực nghiệm khi lấy đề xuất khuyến nghị
