@@ -32,23 +32,25 @@
 
 # Thực nghiệm khi insert / update dữ liệu
 ## Json body test cho HttpPost("Insert") / HttpPut("Update/{id}")
-## {
-##   "brands": "Apple",
-##   "models": "iPhone 16 Pro Max",
-##   "colors": "Silver",
-##   "memory": 8,
-##   "storage": 256,
-##   "camera": true,
-##   "rating": 5,
-##   "originalPrice": 100000,
-##   "mobile": "Apple iPhone 16 Pro Max",
-##   "discountPercentage": 0,
-##   "os": "IOS",
-##   "sellersAmount": 20,
-##   "screenSize": 6.7,
-##   "batterySize": 5000,
-##   "reviews": 300
-## }
+```json
+{
+  "brands": "Apple",
+  "models": "iPhone 16 Pro Max",
+  "colors": "Silver",
+  "memory": 8,
+  "storage": 256,
+  "camera": true,
+  "rating": 5,
+  "originalPrice": 100000,
+  "mobile": "Apple iPhone 16 Pro Max",
+  "discountPercentage": 0,
+  "os": "IOS",
+  "sellersAmount": 20,
+  "screenSize": 6.7,
+  "batterySize": 5000,
+  "reviews": 300
+}
+'''
 
 # Thực nghiệm khi lấy đề xuất khuyến nghị
 ## Json body test cho HttpPost("GetExpertResults")
