@@ -27,14 +27,12 @@
 **Chạy HttpPost("Build") để gom cụm dữ liệu và generate expert.pl file** <br />
 
 # Thực nghiệm cho prolog
-**CMD test cho prolog**
+**CMD test cho prolog (kết quả mong đợi: Top score 3.77, clusters [0,7,1,2,5,4])**
 <br />
 ```txt
 swipl -q -f expertTest.pl -g "query_from_input([feature(memory,'4'),feature(brands,'SAMSUNG'),feature(rating,'4'),feature(storage,'64')])" -t halt
 ```
 <br />
-<br />
-**Kết quả mong đợi: Top score 3.77, clusters [0,7,1,2,5,4]** <br />
 
 # Thực nghiệm khi insert / update dữ liệu
 **Json body test cho HttpPost("Insert") / HttpPut("Update/{id}")**
