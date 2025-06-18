@@ -12,5 +12,6 @@
         public const string SWI_FILE_PATH = "D:\\00 - Project\\ExpertSmartphone\\swipl\\bin\\swipl-win.exe";
         public const string PYTHON_VENV = "Python/.venv/Scripts/python.exe";
         public const string PYTHON_KMEANS_SCRIPT_FILE_PATH = "Python/main.py";
+        public const string PYTHON_ASSIGN_CLUSTER_SCRIPT_FILE_PATH = "Python/main0.py";
     }
 }
