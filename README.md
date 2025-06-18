@@ -27,10 +27,10 @@
 **Chạy HttpPost("Build") để gom cụm dữ liệu và generate expert.pl file** <br />
 
 # Thực nghiệm cho prolog
-**CMD test cho prolog (kết quả mong đợi: Top score 3.77, clusters [0,7,1,2,5,4])**
+**CMD test cho prolog (kết quả mong đợi: Top score 6.66, clusters [8])**
 <br />
 ```txt
-swipl -q -f expertTest.pl -g "query_from_input([feature(memory,'4'),feature(brands,'SAMSUNG'),feature(rating,'4'),feature(storage,'64')])" -t halt
+swipl -q -f "C:\00 - 00\00 - Projects\ExpertSmartphone\Backend\bin\Debug\net8.0\..\..\..\expertTest.pl" -g "query_from_input([feature(brands,'Apple'),feature(colors,'Silver'),feature(memory,'8'),feature(storage,'256'),feature(rating,'5'),feature(sellingprice,'50000'),feature(discountpercentage,'0'),feature(os,'IOS'),feature(sellersamount,'100'),feature(screensize,'6'),feature(batterysize,'5000'),feature(reviews,'300')])" -t halt
 ```
 <br />
 
